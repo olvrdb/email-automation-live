@@ -1,0 +1,29 @@
+{
+  "sourceImagePath": "output/slices/ho-ho-ho-ski.png",
+  "processedImagePath": "output/slices/ho-ho-ho-ski-processed.png",
+  "sliceDir": "output/slices/ho-ho-ho-ski-slices",
+  "targetWidth": 600,
+  "maxSliceHeight": 900,
+  "finalWidth": 600,
+  "finalHeight": 1800,
+  "totalSlices": 2,
+  "slices": [
+    {
+      "index": 1,
+      "fileName": "slice-001.png",
+      "localPath": "output/slices/ho-ho-ho-ski-slices/slice-001.png",
+      "width": 600,
+      "height": 900,
+      "y": 0
+    },
+    {
+      "index": 2,
+      "fileName": "slice-002.png",
+      "localPath": "output/slices/ho-ho-ho-ski-slices/slice-002.png",
+      "width": 600,
+      "height": 900,
+      "y": 900
+    }
+  ],
+  "generatedAt": "2026-06-24T09:26:08.876Z"
+}
