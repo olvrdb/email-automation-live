@@ -1,0 +1,29 @@
+{
+  "sourceImagePath": "output/slices/frame-1.png",
+  "processedImagePath": "output/slices/frame-1-processed.png",
+  "sliceDir": "output/slices/frame-1-slices",
+  "targetWidth": 600,
+  "maxSliceHeight": 900,
+  "finalWidth": 600,
+  "finalHeight": 1800,
+  "totalSlices": 2,
+  "slices": [
+    {
+      "index": 1,
+      "fileName": "slice-001.png",
+      "localPath": "output/slices/frame-1-slices/slice-001.png",
+      "width": 600,
+      "height": 900,
+      "y": 0
+    },
+    {
+      "index": 2,
+      "fileName": "slice-002.png",
+      "localPath": "output/slices/frame-1-slices/slice-002.png",
+      "width": 600,
+      "height": 900,
+      "y": 900
+    }
+  ],
+  "generatedAt": "2026-06-24T14:23:51.295Z"
+}
