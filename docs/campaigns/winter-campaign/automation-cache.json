@@ -1,0 +1,59 @@
+{
+  "cacheVersion": 1,
+  "generatedAt": "2026-06-24T09:26:31.495Z",
+  "campaign": {
+    "name": "Winter Campaign",
+    "safeName": "winter-campaign"
+  },
+  "github": {
+    "repo": "olvrdb/email-automation-live",
+    "branch": "main",
+    "campaignRepoDir": "docs/campaigns/winter-campaign"
+  },
+  "figma": {
+    "figmaFileId": "sm0qS89SDniu4tCJrG1leE",
+    "selectedNodeId": "3:6",
+    "exportedNodeId": "3:6",
+    "exportedNodeName": "Ho ho ho ski",
+    "exportedImagePath": "output/slices/ho-ho-ho-ski.png"
+  },
+  "output": {
+    "exportedImagePath": "output/slices/ho-ho-ho-ski.png",
+    "processedImagePath": "output/slices/ho-ho-ho-ski-processed.png",
+    "sliceDir": "output/slices/ho-ho-ho-ski-slices",
+    "sliceManifestPath": "output/slices/ho-ho-ho-ski-slices/manifest.json"
+  },
+  "hosting": {
+    "previewUrl": "https://olvrdb.github.io/email-automation-live/campaigns/winter-campaign/preview.html",
+    "emailHtmlUrl": "https://olvrdb.github.io/email-automation-live/campaigns/winter-campaign/email.html",
+    "cdnImageFolderUrl": "https://olvrdb.github.io/email-automation-live/campaigns/winter-campaign/slices/",
+    "automationCacheUrl": "https://olvrdb.github.io/email-automation-live/campaigns/winter-campaign/automation-cache.json"
+  },
+  "assets": [
+    {
+      "localPath": "output/slices/ho-ho-ho-ski.png",
+      "repoPath": "docs/campaigns/winter-campaign/slices/ho-ho-ho-ski.png",
+      "publicUrl": "https://olvrdb.github.io/email-automation-live/campaigns/winter-campaign/slices/ho-ho-ho-ski.png"
+    },
+    {
+      "localPath": "output/slices/ho-ho-ho-ski-processed.png",
+      "repoPath": "docs/campaigns/winter-campaign/slices/ho-ho-ho-ski-processed.png",
+      "publicUrl": "https://olvrdb.github.io/email-automation-live/campaigns/winter-campaign/slices/ho-ho-ho-ski-processed.png"
+    },
+    {
+      "localPath": "output/slices/ho-ho-ho-ski-slices/manifest.json",
+      "repoPath": "docs/campaigns/winter-campaign/slices/ho-ho-ho-ski-slices/manifest.json",
+      "publicUrl": "https://olvrdb.github.io/email-automation-live/campaigns/winter-campaign/slices/ho-ho-ho-ski-slices/manifest.json"
+    },
+    {
+      "localPath": "output/slices/ho-ho-ho-ski-slices/slice-001.png",
+      "repoPath": "docs/campaigns/winter-campaign/slices/ho-ho-ho-ski-slices/slice-001.png",
+      "publicUrl": "https://olvrdb.github.io/email-automation-live/campaigns/winter-campaign/slices/ho-ho-ho-ski-slices/slice-001.png"
+    },
+    {
+      "localPath": "output/slices/ho-ho-ho-ski-slices/slice-002.png",
+      "repoPath": "docs/campaigns/winter-campaign/slices/ho-ho-ho-ski-slices/slice-002.png",
+      "publicUrl": "https://olvrdb.github.io/email-automation-live/campaigns/winter-campaign/slices/ho-ho-ho-ski-slices/slice-002.png"
+    }
+  ]
+}
