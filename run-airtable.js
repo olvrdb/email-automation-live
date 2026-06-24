@@ -1,6 +1,6 @@
 import fs from 'fs';
 import axios from 'axios';
-import { execFileSync } from 'child_process';
+import { spawnSync } from 'child_process';
 import { config } from './config.js';
 
 function requireValue(name, value) {
@@ -87,6 +87,21 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
+function isFigmaRateLimitOutput(outputText) {
+  const text = outputText.toLowerCase();
+
+  return (
+    text.includes('figma') &&
+    (
+      text.includes('status: 429') ||
+      text.includes('http 429') ||
+      text.includes('rate limit') ||
+      text.includes('rate-limited') ||
+      text.includes('too many requests')
+    )
+  );
+}
+
 async function getCampaigns({ campaignName, force, maxCampaigns }) {
   requireValue('AIRTABLE_TOKEN', config.airtable.token);
   requireValue('AIRTABLE_BASE_ID', config.airtable.baseId);
@@ -160,10 +175,39 @@ function runLocalAutomation({ figmaUrl, productLinks, campaignName, useCache }) 
     args.push('--use-cache');
   }
 
-  execFileSync('node', args, {
-    stdio: 'inherit',
+  const result = spawnSync('node', args, {
+    encoding: 'utf8',
     shell: false,
   });
+
+  if (result.stdout) {
+    process.stdout.write(result.stdout);
+  }
+
+  if (result.stderr) {
+    process.stderr.write(result.stderr);
+  }
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  if (result.status !== 0) {
+    const combinedOutput = `${result.stdout || ''}\n${result.stderr || ''}`;
+
+    if (isFigmaRateLimitOutput(combinedOutput)) {
+      const error = new Error(
+        'Figma API rate limit detected. Campaign deferred for a later run.'
+      );
+
+      error.code = 'FIGMA_RATE_LIMITED';
+      throw error;
+    }
+
+    throw new Error(
+      `Command failed: node ${args.join(' ')}`
+    );
+  }
 }
 
 async function processCampaign(record, { useCache }) {
@@ -266,6 +310,23 @@ async function run() {
         status: 'success',
       });
     } catch (error) {
+      if (error.code === 'FIGMA_RATE_LIMITED') {
+        console.warn(`Campaign deferred: ${campaignLabel}`);
+        console.warn(error.message);
+
+        await updateAirtableRecord(record.id, {
+          'Automation Last Run Date': new Date().toISOString(),
+        });
+
+        results.push({
+          campaign: campaignLabel,
+          status: 'deferred',
+          error: error.message,
+        });
+
+        continue;
+      }
+
       console.error(`Campaign failed: ${campaignLabel}`);
       console.error(error.message);
 
@@ -287,8 +348,18 @@ async function run() {
   console.log('========================================');
 
   for (const result of results) {
+    let label = 'FAIL';
+
+    if (result.status === 'success') {
+      label = 'PASS';
+    }
+
+    if (result.status === 'deferred') {
+      label = 'DEFERRED';
+    }
+
     console.log(
-      `${result.status === 'success' ? 'PASS' : 'FAIL'} - ${result.campaign}${
+      `${label} - ${result.campaign}${
         result.error ? ` | ${result.error}` : ''
       }`
     );
@@ -300,7 +371,15 @@ async function run() {
     throw new Error(`${failedCount} campaign(s) failed.`);
   }
 
-  console.log('All campaigns processed successfully.');
+  const deferredCount = results.filter(
+    (result) => result.status === 'deferred'
+  ).length;
+
+  if (deferredCount > 0) {
+    console.log(`${deferredCount} campaign(s) deferred for a later run.`);
+  }
+
+  console.log('Airtable automation finished.');
 }
 
 run().catch((error) => {
