@@ -1,0 +1,21 @@
+{
+  "sourceImagePath": "output/slices/email-hero.png",
+  "processedImagePath": "output/slices/email-hero-processed.png",
+  "sliceDir": "output/slices/email-hero-slices",
+  "targetWidth": 600,
+  "maxSliceHeight": 900,
+  "finalWidth": 600,
+  "finalHeight": 844,
+  "totalSlices": 1,
+  "slices": [
+    {
+      "index": 1,
+      "fileName": "slice-001.png",
+      "localPath": "output/slices/email-hero-slices/slice-001.png",
+      "width": 600,
+      "height": 844,
+      "y": 0
+    }
+  ],
+  "generatedAt": "2026-06-24T03:45:50.057Z"
+}
