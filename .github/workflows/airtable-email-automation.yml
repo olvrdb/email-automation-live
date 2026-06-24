@@ -2,8 +2,21 @@ name: Airtable Email Automation
 
 on:
   workflow_dispatch:
+    inputs:
+      campaign_name:
+        description: "Optional: exact Airtable Campaign Name to process"
+        required: false
+        type: string
+      force:
+        description: "Force process this campaign even if Automation Status is not Scheduled"
+        required: false
+        default: false
+        type: boolean
+
   schedule:
-    - cron: "*/15 * * * *"
+    # Runs every 30 minutes in UTC.
+    # Scheduled runs process normal Approved + Scheduled campaigns.
+    - cron: "*/30 * * * *"
 
 permissions:
   contents: write
@@ -24,7 +37,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Install dependencies
         run: npm install
@@ -45,4 +58,19 @@ jobs:
 
           EMAIL_WIDTH: 600
           EMAIL_SLICE_HEIGHT: 900
-        run: node run-airtable.js
+
+          CAMPAIGN_NAME: ${{ github.event.inputs.campaign_name }}
+          FORCE_CAMPAIGN: ${{ github.event.inputs.force }}
+        run: |
+          if [ -n "$CAMPAIGN_NAME" ]; then
+            echo "Running one Airtable campaign: $CAMPAIGN_NAME"
+
+            if [ "$FORCE_CAMPAIGN" = "true" ]; then
+              node run-airtable.js --campaign "$CAMPAIGN_NAME" --force
+            else
+              node run-airtable.js --campaign "$CAMPAIGN_NAME"
+            fi
+          else
+            echo "Running all Approved + Scheduled Airtable campaigns"
+            node run-airtable.js
+          fi
