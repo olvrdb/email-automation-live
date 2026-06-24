@@ -22,12 +22,15 @@ on:
           - production
 
   schedule:
-    # Demo-safe scheduled run.
-    # Later, change RUN_MODE behavior to production when using a proper production Figma setup.
     - cron: "*/30 * * * *"
+
+  issues:
+    types:
+      - opened
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: airtable-email-automation
@@ -35,6 +38,7 @@ concurrency:
 
 jobs:
   run-automation:
+    if: github.event_name != 'issues' || startsWith(github.event.issue.title, 'EMAIL_AUTOMATION_RUN::')
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -64,15 +68,32 @@ jobs:
           KLAVIYO_KEY: MOCK
           SHOPIFY_URL: https://example.com
 
+          SHOPIFY_STORES_JSON: ${{ secrets.SHOPIFY_STORES_JSON }}
+          SHOPIFY_API_VERSION: ${{ secrets.SHOPIFY_API_VERSION }}
+
           EMAIL_WIDTH: 600
           EMAIL_SLICE_HEIGHT: 900
 
-          CAMPAIGN_NAME: ${{ github.event.inputs.campaign_name }}
-          FORCE_CAMPAIGN: ${{ github.event.inputs.force }}
-          RUN_MODE: ${{ github.event.inputs.run_mode || 'demo' }}
-          SHOPIFY_STORES_JSON: ${{ secrets.SHOPIFY_STORES_JSON }}
-          SHOPIFY_API_VERSION: ${{ secrets.SHOPIFY_API_VERSION }}
+          CAMPAIGN_NAME_INPUT: ${{ github.event.inputs.campaign_name || '' }}
+          FORCE_INPUT: ${{ github.event.inputs.force || 'false' }}
+          RUN_MODE_INPUT: ${{ github.event.inputs.run_mode || 'demo' }}
+          ISSUE_TITLE: ${{ github.event.issue.title || '' }}
         run: |
+          RUN_MODE="$RUN_MODE_INPUT"
+          CAMPAIGN_NAME="$CAMPAIGN_NAME_INPUT"
+          FORCE_CAMPAIGN="$FORCE_INPUT"
+
+          if [ "${{ github.event_name }}" = "issues" ]; then
+            PREFIX="EMAIL_AUTOMATION_RUN::"
+            CAMPAIGN_NAME="${ISSUE_TITLE#"$PREFIX"}"
+            FORCE_CAMPAIGN="true"
+            RUN_MODE="demo"
+
+            echo "Issue trigger detected."
+            echo "Issue title: $ISSUE_TITLE"
+            echo "Campaign from issue title: $CAMPAIGN_NAME"
+          fi
+
           echo "Run mode: $RUN_MODE"
 
           MAX_ARGS=""
@@ -95,3 +116,18 @@ jobs:
             echo "Running Airtable queue"
             node run-airtable.js $MAX_ARGS
           fi
+
+      - name: Comment and close trigger issue on success
+        if: github.event_name == 'issues' && success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment "${{ github.event.issue.number }}" --body "Email automation completed successfully for this Airtable-triggered campaign."
+          gh issue close "${{ github.event.issue.number }}" --reason completed
+
+      - name: Comment on trigger issue failure
+        if: github.event_name == 'issues' && failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment "${{ github.event.issue.number }}" --body "Email automation failed. Check the workflow run logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
