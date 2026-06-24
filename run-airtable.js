@@ -4,6 +4,9 @@ import axios from 'axios';
 import { spawnSync } from 'child_process';
 dotenv.config();
 
+const NOTES_FIELD = 'Notes';
+const RESOLVE_FIELD = 'Resolve';
+
 function requireValue(name, value) {
   if (!value) {
     throw new Error(`Missing ${name}. Check your .env file.`);
@@ -88,6 +91,52 @@ function makeSafeName(name) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+}
+function makeSuccessNote() {
+  return 'Success: Automation completed successfully.';
+}
+
+function makeErrorNote(errorMessage) {
+  const cleanMessage = String(errorMessage || 'Unknown automation error.')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return `Error: ${cleanMessage}`.slice(0, 1500);
+}
+
+function extractFailureMessage(outputText) {
+  const lines = String(outputText || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+
+    if (line.startsWith('Reason:')) {
+      const previousFail = lines
+        .slice(Math.max(0, index - 5), index)
+        .reverse()
+        .find((candidate) => candidate.startsWith('FAIL:'));
+
+      return previousFail ? `${previousFail} ${line}` : line;
+    }
+  }
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+
+    if (
+      line.startsWith('FAIL:') ||
+      line.startsWith('Error:') ||
+      line.includes('Invalid ') ||
+      line.includes('Missing ')
+    ) {
+      return line;
+    }
+  }
+
+  return 'Automation command failed.';
 }
 
 function readJson(filePath) {
@@ -284,7 +333,8 @@ function runLocalAutomation({
       throw error;
     }
 
-    throw new Error(`Command failed: node ${args.join(' ')}`);
+  const failureMessage = extractFailureMessage(combinedOutput);
+throw new Error(failureMessage);
   }
 }
 
@@ -349,13 +399,15 @@ async function processCampaign(record, { useCache }) {
   const mockKlaviyoId = `MOCK-${safeCampaignName}-${Date.now()}`;
 
   const updateFields = {
-    'Link Verification Status': 'Verified',
-    'Automation Last Run Date': new Date().toISOString(),
-    'HTML Live Preview URL': hostingReport.previewUrl,
-    'CDN Image Folder URL': hostingReport.cdnImageFolderUrl,
-    'Klaviyo Campaign ID': mockKlaviyoId,
-    'Force Refresh': false,
-  };
+  'Link Verification Status': 'Verified',
+  'Automation Last Run Date': new Date().toISOString(),
+  'HTML Live Preview URL': hostingReport.previewUrl,
+  'CDN Image Folder URL': hostingReport.cdnImageFolderUrl,
+  'Klaviyo Campaign ID': mockKlaviyoId,
+  'Force Refresh': false,
+  [RESOLVE_FIELD]: false,
+  [NOTES_FIELD]: makeSuccessNote(),
+};
 
   await updateAirtableRecord(record.id, updateFields);
 
@@ -365,6 +417,8 @@ async function processCampaign(record, { useCache }) {
   console.log(`CDN Image Folder URL: ${hostingReport.cdnImageFolderUrl}`);
   console.log(`Klaviyo Campaign ID: ${mockKlaviyoId}`);
   console.log('Force Refresh reset to unchecked.');
+  console.log('Resolve reset to unchecked.');
+console.log(`Notes: ${makeSuccessNote()}`);
 }
 
 async function run() {
@@ -413,8 +467,10 @@ async function run() {
         console.warn(error.message);
 
         await updateAirtableRecord(record.id, {
-          'Automation Last Run Date': new Date().toISOString(),
-        });
+  'Automation Last Run Date': new Date().toISOString(),
+  [NOTES_FIELD]: `Deferred: ${error.message}`,
+  [RESOLVE_FIELD]: false,
+});
 
         results.push({
           campaign: campaignLabel,
@@ -429,10 +485,11 @@ async function run() {
       console.error(error.message);
 
       await updateAirtableRecord(record.id, {
-        'Link Verification Status': 'Error',
-        'Automation Last Run Date': new Date().toISOString(),
-      });
-
+  'Link Verification Status': 'Error',
+  'Automation Last Run Date': new Date().toISOString(),
+  [NOTES_FIELD]: makeErrorNote(error.message),
+  [RESOLVE_FIELD]: false,
+});
       results.push({
         campaign: campaignLabel,
         status: 'failed',
