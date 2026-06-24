@@ -145,22 +145,27 @@ async function getCampaigns({ campaignName, force, maxCampaigns }) {
     config.airtable.tableName
   )}`;
 
-  let filterByFormula = `AND(
+  const eligibleStatusFormula = `OR(
+    {Automation Status} = 'Scheduled',
+    {Automation Status} = 'Error'
+  )`;
+
+let filterByFormula = `AND(
     {Design Status} = 'Approved',
-    {Automation Status} = 'Scheduled'
+    ${eligibleStatusFormula}
   )`;
 
   if (campaignName && force) {
     filterByFormula = `{Campaign Name} = '${escapeAirtableString(campaignName)}'`;
   }
 
-  if (campaignName && !force) {
-    filterByFormula = `AND(
+ if (campaignName && !force) {
+  filterByFormula = `AND(
       {Campaign Name} = '${escapeAirtableString(campaignName)}',
       {Design Status} = 'Approved',
-      {Automation Status} = 'Scheduled'
+      ${eligibleStatusFormula}
     )`;
-  }
+}
 
   const records = [];
   let offset = null;
