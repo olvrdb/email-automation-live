@@ -9,6 +9,20 @@ function requireValue(name, value) {
   }
 }
 
+function parsePositiveInteger(value, fallback = null) {
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = Number(value);
+
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`Invalid positive integer value: ${value}`);
+  }
+
+  return parsed;
+}
+
 function parseArgs() {
   const rawArgs = process.argv.slice(2);
 
@@ -19,14 +33,27 @@ function parseArgs() {
   const campaignName =
     campaignIndex !== -1 ? rawArgs[campaignIndex + 1] : null;
 
+  const maxIndex = rawArgs.indexOf('--max');
+  const maxFromCli = maxIndex !== -1 ? rawArgs[maxIndex + 1] : null;
+
   if (campaignIndex !== -1 && !campaignName) {
     throw new Error('Missing campaign name after --campaign.');
   }
+
+  if (maxIndex !== -1 && !maxFromCli) {
+    throw new Error('Missing number after --max.');
+  }
+
+  const maxCampaigns = parsePositiveInteger(
+    maxFromCli || process.env.MAX_CAMPAIGNS,
+    null
+  );
 
   return {
     useCache,
     force,
     campaignName,
+    maxCampaigns,
   };
 }
 
@@ -60,7 +87,7 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
-async function getCampaigns({ campaignName, force }) {
+async function getCampaigns({ campaignName, force, maxCampaigns }) {
   requireValue('AIRTABLE_TOKEN', config.airtable.token);
   requireValue('AIRTABLE_BASE_ID', config.airtable.baseId);
   requireValue('AIRTABLE_TABLE_NAME', config.airtable.tableName);
@@ -92,7 +119,7 @@ async function getCampaigns({ campaignName, force }) {
     },
     params: {
       filterByFormula,
-      maxRecords: 50,
+      maxRecords: maxCampaigns || 50,
     },
   });
 
@@ -199,14 +226,19 @@ async function processCampaign(record, { useCache }) {
 }
 
 async function run() {
-  const { campaignName, useCache, force } = parseArgs();
+  const { campaignName, useCache, force, maxCampaigns } = parseArgs();
 
   console.log('Scanning Airtable for campaigns...');
   console.log(`Campaign filter: ${campaignName || 'none'}`);
   console.log(`Force mode: ${force ? 'YES' : 'NO'}`);
   console.log(`Use cache: ${useCache ? 'YES' : 'NO'}`);
+  console.log(`Max campaigns: ${maxCampaigns || 'no limit'}`);
 
-  const records = await getCampaigns({ campaignName, force });
+  const records = await getCampaigns({
+    campaignName,
+    force,
+    maxCampaigns,
+  });
 
   if (records.length === 0) {
     console.log('No campaigns found for processing.');
