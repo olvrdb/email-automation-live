@@ -27,6 +27,14 @@ function normalizePath(filePath) {
   return filePath.replace(/\\/g, '/');
 }
 
+function readJson(filePath) {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Missing required file: ${filePath}`);
+  }
+
+  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+}
+
 function getPagesBaseUrl(repo) {
   const [owner, repoName] = repo.split('/');
 
@@ -135,7 +143,7 @@ function getCurrentCampaignFiles() {
     throw new Error('Missing output/figma-export.json.');
   }
 
-  const figmaExport = JSON.parse(fs.readFileSync(figmaExportPath, 'utf8'));
+  const figmaExport = readJson(figmaExportPath);
   const exportedImagePath = figmaExport.exportedImagePath;
 
   if (!exportedImagePath || !fs.existsSync(exportedImagePath)) {
@@ -150,6 +158,7 @@ function getCurrentCampaignFiles() {
   );
 
   const sliceDir = path.join(parsedImage.dir, `${parsedImage.name}-slices`);
+  const sliceManifestPath = path.join(sliceDir, 'manifest.json');
 
   const files = [exportedImagePath];
 
@@ -161,20 +170,24 @@ function getCurrentCampaignFiles() {
   files.push(...sliceFiles);
 
   return {
+    figmaExport,
     exportedImagePath,
     processedImagePath,
     sliceDir,
+    sliceManifestPath,
     files,
   };
 }
 
 function getRepoPathForAsset({ localPath, campaignFiles, campaignRepoDir }) {
   const normalizedLocalPath = normalizePath(localPath);
-  const fileName = path.basename(localPath);
   const normalizedSliceDir = normalizePath(campaignFiles.sliceDir);
+  const fileName = path.basename(localPath);
 
-  if (normalizedLocalPath.startsWith(normalizedSliceDir)) {
-    const relativeSlicePath = normalizePath(path.relative(campaignFiles.sliceDir, localPath));
+  if (normalizedLocalPath.startsWith(`${normalizedSliceDir}/`)) {
+    const relativeSlicePath = normalizePath(
+      path.relative(campaignFiles.sliceDir, localPath)
+    );
 
     return `${campaignRepoDir}/slices/${path.basename(
       campaignFiles.sliceDir
@@ -182,6 +195,81 @@ function getRepoPathForAsset({ localPath, campaignFiles, campaignRepoDir }) {
   }
 
   return `${campaignRepoDir}/slices/${fileName}`;
+}
+
+function buildAutomationCache({
+  campaignName,
+  safeCampaignName,
+  repo,
+  branch,
+  campaignRepoDir,
+  campaignPublicDir,
+  campaignFiles,
+}) {
+  const previewUrl = `${campaignPublicDir}/preview.html`;
+  const emailHtmlUrl = `${campaignPublicDir}/email.html`;
+  const cdnImageFolderUrl = `${campaignPublicDir}/slices/`;
+  const automationCacheUrl = `${campaignPublicDir}/automation-cache.json`;
+
+  const assets = campaignFiles.files.map((localPath) => {
+    const repoPath = getRepoPathForAsset({
+      localPath,
+      campaignFiles,
+      campaignRepoDir,
+    });
+
+    const campaignRelativePath = repoPath.replace(`${campaignRepoDir}/`, '');
+
+    return {
+      localPath: normalizePath(localPath),
+      repoPath,
+      publicUrl: `${campaignPublicDir}/${campaignRelativePath}`,
+    };
+  });
+
+  return {
+    cacheVersion: 1,
+    generatedAt: new Date().toISOString(),
+
+    campaign: {
+      name: campaignName,
+      safeName: safeCampaignName,
+    },
+
+    github: {
+      repo,
+      branch,
+      campaignRepoDir,
+    },
+
+    figma: {
+      figmaFileId: campaignFiles.figmaExport.figmaFileId || null,
+      selectedNodeId: campaignFiles.figmaExport.selectedNodeId || null,
+      exportedNodeId: campaignFiles.figmaExport.exportedNodeId || null,
+      exportedNodeName: campaignFiles.figmaExport.exportedNodeName || null,
+      exportedImagePath: normalizePath(campaignFiles.exportedImagePath),
+    },
+
+    output: {
+      exportedImagePath: normalizePath(campaignFiles.exportedImagePath),
+      processedImagePath: fs.existsSync(campaignFiles.processedImagePath)
+        ? normalizePath(campaignFiles.processedImagePath)
+        : null,
+      sliceDir: normalizePath(campaignFiles.sliceDir),
+      sliceManifestPath: fs.existsSync(campaignFiles.sliceManifestPath)
+        ? normalizePath(campaignFiles.sliceManifestPath)
+        : null,
+    },
+
+    hosting: {
+      previewUrl,
+      emailHtmlUrl,
+      cdnImageFolderUrl,
+      automationCacheUrl,
+    },
+
+    assets,
+  };
 }
 
 async function run() {
@@ -248,13 +336,38 @@ async function run() {
     });
   }
 
+  const automationCache = buildAutomationCache({
+    campaignName,
+    safeCampaignName,
+    repo,
+    branch,
+    campaignRepoDir,
+    campaignPublicDir,
+    campaignFiles,
+  });
+
+  fs.writeFileSync(
+    'output/automation-cache.json',
+    JSON.stringify(automationCache, null, 2),
+    'utf8'
+  );
+
+  await uploadFileToGitHub({
+    localPath: 'output/automation-cache.json',
+    repoPath: `${campaignRepoDir}/automation-cache.json`,
+    repo,
+    branch,
+    token,
+  });
+
   const hostingReport = {
     campaignName,
     githubRepo: repo,
     branch,
-    previewUrl: `${campaignPublicDir}/preview.html`,
-    emailHtmlUrl: `${campaignPublicDir}/email.html`,
-    cdnImageFolderUrl: `${campaignPublicDir}/slices/`,
+    previewUrl: automationCache.hosting.previewUrl,
+    emailHtmlUrl: automationCache.hosting.emailHtmlUrl,
+    cdnImageFolderUrl: automationCache.hosting.cdnImageFolderUrl,
+    automationCacheUrl: automationCache.hosting.automationCacheUrl,
     uploadedAt: new Date().toISOString(),
   };
 
@@ -268,6 +381,7 @@ async function run() {
   console.log(`Preview URL: ${hostingReport.previewUrl}`);
   console.log(`Email HTML URL: ${hostingReport.emailHtmlUrl}`);
   console.log(`CDN image folder URL: ${hostingReport.cdnImageFolderUrl}`);
+  console.log(`Automation cache URL: ${hostingReport.automationCacheUrl}`);
   console.log('Saved report to: output/hosting-report.json');
 }
 

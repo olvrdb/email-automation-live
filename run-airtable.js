@@ -102,6 +102,27 @@ function isFigmaRateLimitOutput(outputText) {
   );
 }
 
+function runCommand(command, args) {
+  const result = spawnSync(command, args, {
+    encoding: 'utf8',
+    shell: false,
+  });
+
+  if (result.stdout) {
+    process.stdout.write(result.stdout);
+  }
+
+  if (result.stderr) {
+    process.stderr.write(result.stderr);
+  }
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  return result;
+}
+
 async function getCampaigns({ campaignName, force, maxCampaigns }) {
   requireValue('AIRTABLE_TOKEN', config.airtable.token);
   requireValue('AIRTABLE_BASE_ID', config.airtable.baseId);
@@ -128,17 +149,39 @@ async function getCampaigns({ campaignName, force, maxCampaigns }) {
     )`;
   }
 
-  const response = await axios.get(airtableUrl, {
-    headers: {
-      Authorization: `Bearer ${config.airtable.token}`,
-    },
-    params: {
-      filterByFormula,
-      maxRecords: maxCampaigns || 50,
-    },
-  });
+  const records = [];
+  let offset = null;
 
-  return response.data.records || [];
+  do {
+    const params = {
+      filterByFormula,
+      pageSize: 100,
+    };
+
+    if (offset) {
+      params.offset = offset;
+    }
+
+    if (maxCampaigns) {
+      params.maxRecords = maxCampaigns;
+    }
+
+    const response = await axios.get(airtableUrl, {
+      headers: {
+        Authorization: `Bearer ${config.airtable.token}`,
+      },
+      params,
+    });
+
+    records.push(...(response.data.records || []));
+    offset = response.data.offset || null;
+
+    if (maxCampaigns && records.length >= maxCampaigns) {
+      return records.slice(0, maxCampaigns);
+    }
+  } while (offset);
+
+  return records;
 }
 
 async function updateAirtableRecord(recordId, fields) {
@@ -160,7 +203,34 @@ async function updateAirtableRecord(recordId, fields) {
   );
 }
 
-function runLocalAutomation({ figmaUrl, productLinks, campaignName, useCache }) {
+function tryRestoreAutomationCache(campaignName) {
+  console.log('\nAttempting to restore cached Figma export...');
+  console.log(`Campaign: ${campaignName}`);
+
+  const result = runCommand('node', [
+    'skills/07-restore-cache.js',
+    campaignName,
+  ]);
+
+  if (result.status === 0) {
+    console.log('Cache restore succeeded. Figma API will be skipped.');
+    return true;
+  }
+
+  if (result.status === 2) {
+    console.log('No cache available. Automation will pull fresh from Figma.');
+    return false;
+  }
+
+  throw new Error(`Cache restore failed for campaign: ${campaignName}`);
+}
+
+function runLocalAutomation({
+  figmaUrl,
+  productLinks,
+  campaignName,
+  useCache,
+}) {
   const productLinksText = productLinks.join('|');
 
   const args = [
@@ -175,22 +245,7 @@ function runLocalAutomation({ figmaUrl, productLinks, campaignName, useCache }) 
     args.push('--use-cache');
   }
 
-  const result = spawnSync('node', args, {
-    encoding: 'utf8',
-    shell: false,
-  });
-
-  if (result.stdout) {
-    process.stdout.write(result.stdout);
-  }
-
-  if (result.stderr) {
-    process.stderr.write(result.stderr);
-  }
-
-  if (result.error) {
-    throw result.error;
-  }
+  const result = runCommand('node', args);
 
   if (result.status !== 0) {
     const combinedOutput = `${result.stdout || ''}\n${result.stderr || ''}`;
@@ -204,9 +259,7 @@ function runLocalAutomation({ figmaUrl, productLinks, campaignName, useCache }) 
       throw error;
     }
 
-    throw new Error(
-      `Command failed: node ${args.join(' ')}`
-    );
+    throw new Error(`Command failed: node ${args.join(' ')}`);
   }
 }
 
@@ -217,6 +270,8 @@ async function processCampaign(record, { useCache }) {
   const figmaUrl = fields['Figma URL'];
   const productLinks = parseProductLinks(fields['Product Links']);
   const firstProductUrl = productLinks[0];
+
+  const forceRefresh = Boolean(fields['Force Refresh']);
 
   console.log('\n========================================');
   console.log(`Processing Airtable campaign: ${selectedCampaignName || record.id}`);
@@ -238,13 +293,26 @@ async function processCampaign(record, { useCache }) {
   console.log(`Figma URL: ${figmaUrl}`);
   console.log(`Primary product URL: ${firstProductUrl}`);
   console.log(`Product links to verify: ${productLinks.length}`);
-  console.log(`Use cached Figma export: ${useCache ? 'YES' : 'NO'}`);
+  console.log(`Force Refresh: ${forceRefresh ? 'YES' : 'NO'}`);
+
+  let shouldUseCache = useCache;
+
+  if (forceRefresh) {
+    console.log('Force Refresh is checked. Cache will be ignored.');
+    shouldUseCache = false;
+  }
+
+  if (!forceRefresh && !useCache) {
+    shouldUseCache = tryRestoreAutomationCache(selectedCampaignName);
+  }
+
+  console.log(`Use cached Figma export: ${shouldUseCache ? 'YES' : 'NO'}`);
 
   runLocalAutomation({
     figmaUrl,
     productLinks,
     campaignName: selectedCampaignName,
-    useCache,
+    useCache: shouldUseCache,
   });
 
   const hostingReport = readJson('output/hosting-report.json');
@@ -252,21 +320,25 @@ async function processCampaign(record, { useCache }) {
   const safeCampaignName = makeSafeName(selectedCampaignName);
   const mockKlaviyoId = `MOCK-${safeCampaignName}-${Date.now()}`;
 
-  await updateAirtableRecord(record.id, {
+  const updateFields = {
     'Link Verification Status': 'Verified',
     'Automation Last Run Date': new Date().toISOString(),
     'HTML Live Preview URL': hostingReport.previewUrl,
     'CDN Image Folder URL': hostingReport.cdnImageFolderUrl,
-
-    // Still mock until we connect the real Klaviyo API.
     'Klaviyo Campaign ID': mockKlaviyoId,
-  });
+
+    // Internal override. After a successful fresh run, reset it.
+    'Force Refresh': false,
+  };
+
+  await updateAirtableRecord(record.id, updateFields);
 
   console.log('Airtable updated successfully.');
   console.log('Link Verification Status: Verified');
   console.log(`HTML Live Preview URL: ${hostingReport.previewUrl}`);
   console.log(`CDN Image Folder URL: ${hostingReport.cdnImageFolderUrl}`);
   console.log(`Klaviyo Campaign ID: ${mockKlaviyoId}`);
+  console.log('Force Refresh reset to unchecked.');
 }
 
 async function run() {
@@ -275,7 +347,7 @@ async function run() {
   console.log('Scanning Airtable for campaigns...');
   console.log(`Campaign filter: ${campaignName || 'none'}`);
   console.log(`Force mode: ${force ? 'YES' : 'NO'}`);
-  console.log(`Use cache: ${useCache ? 'YES' : 'NO'}`);
+  console.log(`Use cache override: ${useCache ? 'YES' : 'NO'}`);
   console.log(`Max campaigns: ${maxCampaigns || 'no limit'}`);
 
   const records = await getCampaigns({
