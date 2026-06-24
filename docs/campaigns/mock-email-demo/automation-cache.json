@@ -1,0 +1,54 @@
+{
+  "cacheVersion": 1,
+  "generatedAt": "2026-06-24T06:33:43.992Z",
+  "campaign": {
+    "name": "Mock Email Demo",
+    "safeName": "mock-email-demo"
+  },
+  "github": {
+    "repo": "olvrdb/email-automation-live",
+    "branch": "main",
+    "campaignRepoDir": "docs/campaigns/mock-email-demo"
+  },
+  "figma": {
+    "figmaFileId": "iVvyGPfRYiNXuUVWSuxWBM",
+    "selectedNodeId": "0:1",
+    "exportedNodeId": "1:2",
+    "exportedNodeName": "Email / Hero",
+    "exportedImagePath": "output/slices/email-hero.png"
+  },
+  "output": {
+    "exportedImagePath": "output/slices/email-hero.png",
+    "processedImagePath": "output/slices/email-hero-processed.png",
+    "sliceDir": "output/slices/email-hero-slices",
+    "sliceManifestPath": "output/slices/email-hero-slices/manifest.json"
+  },
+  "hosting": {
+    "previewUrl": "https://olvrdb.github.io/email-automation-live/campaigns/mock-email-demo/preview.html",
+    "emailHtmlUrl": "https://olvrdb.github.io/email-automation-live/campaigns/mock-email-demo/email.html",
+    "cdnImageFolderUrl": "https://olvrdb.github.io/email-automation-live/campaigns/mock-email-demo/slices/",
+    "automationCacheUrl": "https://olvrdb.github.io/email-automation-live/campaigns/mock-email-demo/automation-cache.json"
+  },
+  "assets": [
+    {
+      "localPath": "output/slices/email-hero.png",
+      "repoPath": "docs/campaigns/mock-email-demo/slices/email-hero.png",
+      "publicUrl": "https://olvrdb.github.io/email-automation-live/campaigns/mock-email-demo/slices/email-hero.png"
+    },
+    {
+      "localPath": "output/slices/email-hero-processed.png",
+      "repoPath": "docs/campaigns/mock-email-demo/slices/email-hero-processed.png",
+      "publicUrl": "https://olvrdb.github.io/email-automation-live/campaigns/mock-email-demo/slices/email-hero-processed.png"
+    },
+    {
+      "localPath": "output/slices/email-hero-slices/manifest.json",
+      "repoPath": "docs/campaigns/mock-email-demo/slices/email-hero-slices/manifest.json",
+      "publicUrl": "https://olvrdb.github.io/email-automation-live/campaigns/mock-email-demo/slices/email-hero-slices/manifest.json"
+    },
+    {
+      "localPath": "output/slices/email-hero-slices/slice-001.png",
+      "repoPath": "docs/campaigns/mock-email-demo/slices/email-hero-slices/slice-001.png",
+      "publicUrl": "https://olvrdb.github.io/email-automation-live/campaigns/mock-email-demo/slices/email-hero-slices/slice-001.png"
+    }
+  ]
+}
