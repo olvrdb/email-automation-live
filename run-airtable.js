@@ -1,7 +1,8 @@
+import dotenv from 'dotenv';
 import fs from 'fs';
 import axios from 'axios';
 import { spawnSync } from 'child_process';
-import { config } from './config.js';
+dotenv.config();
 
 function requireValue(name, value) {
   if (!value) {
@@ -54,6 +55,16 @@ function parseArgs() {
     force,
     campaignName,
     maxCampaigns,
+  };
+}
+
+function getConfig() {
+  return {
+    airtable: {
+      token: process.env.AIRTABLE_TOKEN || '',
+      baseId: process.env.AIRTABLE_BASE_ID || '',
+      tableName: process.env.AIRTABLE_TABLE_NAME || 'Email Campaigns',
+    },
   };
 }
 
@@ -124,6 +135,8 @@ function runCommand(command, args) {
 }
 
 async function getCampaigns({ campaignName, force, maxCampaigns }) {
+  const config = getConfig();
+
   requireValue('AIRTABLE_TOKEN', config.airtable.token);
   requireValue('AIRTABLE_BASE_ID', config.airtable.baseId);
   requireValue('AIRTABLE_TABLE_NAME', config.airtable.tableName);
@@ -185,6 +198,8 @@ async function getCampaigns({ campaignName, force, maxCampaigns }) {
 }
 
 async function updateAirtableRecord(recordId, fields) {
+  const config = getConfig();
+
   const airtableUrl = `https://api.airtable.com/v0/${config.airtable.baseId}/${encodeURIComponent(
     config.airtable.tableName
   )}/${recordId}`;
@@ -230,6 +245,7 @@ function runLocalAutomation({
   productLinks,
   campaignName,
   useCache,
+  storeKey,
 }) {
   const productLinksText = productLinks.join('|');
 
@@ -243,6 +259,10 @@ function runLocalAutomation({
 
   if (useCache) {
     args.push('--use-cache');
+  }
+
+  if (storeKey) {
+    args.push('--store-key', storeKey);
   }
 
   const result = runCommand('node', args);
@@ -271,6 +291,7 @@ async function processCampaign(record, { useCache }) {
   const productLinks = parseProductLinks(fields['Product Links']);
   const firstProductUrl = productLinks[0];
 
+  const storeKey = fields['Store Key'] || '';
   const forceRefresh = Boolean(fields['Force Refresh']);
 
   console.log('\n========================================');
@@ -293,6 +314,7 @@ async function processCampaign(record, { useCache }) {
   console.log(`Figma URL: ${figmaUrl}`);
   console.log(`Primary product URL: ${firstProductUrl}`);
   console.log(`Product links to verify: ${productLinks.length}`);
+  console.log(`Store Key: ${storeKey || 'none'}`);
   console.log(`Force Refresh: ${forceRefresh ? 'YES' : 'NO'}`);
 
   let shouldUseCache = useCache;
@@ -313,6 +335,7 @@ async function processCampaign(record, { useCache }) {
     productLinks,
     campaignName: selectedCampaignName,
     useCache: shouldUseCache,
+    storeKey,
   });
 
   const hostingReport = readJson('output/hosting-report.json');
@@ -326,8 +349,6 @@ async function processCampaign(record, { useCache }) {
     'HTML Live Preview URL': hostingReport.previewUrl,
     'CDN Image Folder URL': hostingReport.cdnImageFolderUrl,
     'Klaviyo Campaign ID': mockKlaviyoId,
-
-    // Internal override. After a successful fresh run, reset it.
     'Force Refresh': false,
   };
 

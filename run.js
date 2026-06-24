@@ -1,17 +1,97 @@
 import fs from 'fs';
 import path from 'path';
-import { execFileSync } from 'child_process';
+import { spawnSync } from 'child_process';
 import { config } from './config.js';
 
-function runStep(label, command, args) {
-  console.log('\n========================================');
-  console.log(label);
-  console.log('========================================');
+function makeSafeName(name) {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
 
-  execFileSync(command, args, {
-    stdio: 'inherit',
+function normalizePath(filePath) {
+  return filePath.replace(/\\/g, '/');
+}
+
+function parseProductLinks(rawLinks) {
+  if (!rawLinks) {
+    return [];
+  }
+
+  return rawLinks
+    .split(/\r?\n|,|\|/)
+    .map((link) => link.trim())
+    .filter(Boolean);
+}
+
+function parseArgs() {
+  const rawArgs = process.argv.slice(2);
+
+  const useCache = rawArgs.includes('--use-cache');
+
+  const storeKeyIndex = rawArgs.indexOf('--store-key');
+  const storeKey = storeKeyIndex !== -1 ? rawArgs[storeKeyIndex + 1] : '';
+
+  if (storeKeyIndex !== -1 && !storeKey) {
+    throw new Error('Missing value after --store-key.');
+  }
+
+  const positionalArgs = rawArgs.filter((arg, index) => {
+    if (arg === '--use-cache') {
+      return false;
+    }
+
+    if (arg === '--store-key') {
+      return false;
+    }
+
+    if (index > 0 && rawArgs[index - 1] === '--store-key') {
+      return false;
+    }
+
+    return true;
+  });
+
+  const figmaUrl = positionalArgs[0];
+  const productLinksText = positionalArgs[1] || config.shopify.url;
+  const campaignName = positionalArgs[2] || 'Mock Email Demo';
+  const subjectLine = positionalArgs[3] || 'Automated Email Preview';
+
+  return {
+    figmaUrl,
+    productLinksText,
+    productLinks: parseProductLinks(productLinksText),
+    campaignName,
+    subjectLine,
+    useCache,
+    storeKey,
+  };
+}
+
+function runCommand(command, args) {
+  const result = spawnSync(command, args, {
+    encoding: 'utf8',
     shell: false,
   });
+
+  if (result.stdout) {
+    process.stdout.write(result.stdout);
+  }
+
+  if (result.stderr) {
+    process.stderr.write(result.stderr);
+  }
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  if (result.status !== 0) {
+    throw new Error(`Command failed: ${command} ${args.join(' ')}`);
+  }
+
+  return result;
 }
 
 function readJson(filePath) {
@@ -22,24 +102,30 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
-function getProcessedImagePath(exportedImagePath) {
-  const parsed = path.parse(exportedImagePath);
+function getExportedImagePath() {
+  const figmaExport = readJson('output/figma-export.json');
 
-  return path.join(parsed.dir, `${parsed.name}-processed${parsed.ext}`);
+  if (!figmaExport.exportedImagePath) {
+    throw new Error('output/figma-export.json is missing exportedImagePath.');
+  }
+
+  return figmaExport.exportedImagePath;
 }
 
-function makeSafeName(name) {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+function getProcessedImagePath(exportedImagePath) {
+  const parsedImage = path.parse(exportedImagePath);
+
+  return path.join(
+    parsedImage.dir,
+    `${parsedImage.name}-processed${parsedImage.ext}`
+  );
 }
 
 function getPagesBaseUrl(repo) {
   const [owner, repoName] = repo.split('/');
 
   if (!owner || !repoName) {
-    return null;
+    throw new Error('GITHUB_REPO must look like: username/repo-name');
   }
 
   if (repoName.toLowerCase() === `${owner.toLowerCase()}.github.io`) {
@@ -49,160 +135,150 @@ function getPagesBaseUrl(repo) {
   return `https://${owner}.github.io/${repoName}`;
 }
 
-function getPublicImageUrl({ campaignName, processedImagePath }) {
+function getExpectedPublicImageUrl({ campaignName, processedImagePath }) {
   if (!config.cdn.githubRepo) {
     return null;
   }
 
   const pagesBaseUrl = getPagesBaseUrl(config.cdn.githubRepo);
-
-  if (!pagesBaseUrl) {
-    return null;
-  }
-
   const safeCampaignName = makeSafeName(campaignName);
-  const imageFileName = path.basename(processedImagePath);
+  const fileName = path.basename(processedImagePath);
 
-  return `${pagesBaseUrl}/campaigns/${safeCampaignName}/slices/${imageFileName}`;
+  return `${pagesBaseUrl}/campaigns/${safeCampaignName}/slices/${fileName}`;
 }
 
-function parseProductLinks(rawProductLinks) {
-  if (!rawProductLinks) {
-    return [config.shopify.url];
+function verifyShopifyProducts({ storeKey, productLinksText }) {
+  if (!storeKey) {
+    console.log('No Store Key supplied. Skipping Shopify Admin API product verification.');
+    return;
   }
 
-  return rawProductLinks
-    .split(/\r?\n|,|\|/)
-    .map((link) => link.trim())
-    .filter(Boolean);
+  console.log('\nStep: Shopify Admin API product verification');
+  console.log(`Store Key: ${storeKey}`);
+
+  runCommand('node', [
+    'skills/08-verify-shopify-products.js',
+    storeKey,
+    productLinksText,
+  ]);
 }
 
-function parseArgs() {
-  const rawArgs = process.argv.slice(2);
-  const useCache = rawArgs.includes('--use-cache');
-  const forceFigma = rawArgs.includes('--force-figma');
-
-  const positionalArgs = rawArgs.filter((arg) => !arg.startsWith('--'));
-
-  const productLinks = parseProductLinks(positionalArgs[1]);
-  const primaryProductUrl = productLinks[0] || config.shopify.url;
-
-  return {
-    figmaUrl: positionalArgs[0],
-    productLinks,
-    primaryProductUrl,
-    campaignName: positionalArgs[2] || 'Mock Email Demo',
-    subjectLine: positionalArgs[3] || 'Automated Email Preview',
-    useCache,
-    forceFigma,
-  };
-}
-
-function validateCachedExport(figmaExport) {
-  if (!figmaExport.exportedImagePath) {
-    throw new Error('Cached Figma export is missing exportedImagePath.');
-  }
-
-  if (!fs.existsSync(figmaExport.exportedImagePath)) {
-    throw new Error(
-      `Cached exported image does not exist: ${figmaExport.exportedImagePath}`
-    );
-  }
-}
-
-function main() {
+async function run() {
   const {
     figmaUrl,
+    productLinksText,
     productLinks,
-    primaryProductUrl,
     campaignName,
     subjectLine,
     useCache,
-    forceFigma,
+    storeKey,
   } = parseArgs();
 
   if (!figmaUrl) {
-    throw new Error('Missing Figma URL. Run: node run.js "YOUR_FIGMA_URL"');
+    throw new Error(
+      'Missing Figma URL. Run: node run.js "FIGMA_URL" "PRODUCT_LINKS" "Campaign Name" "Subject Line"'
+    );
   }
 
+  if (productLinks.length === 0) {
+    throw new Error('At least one product link is required.');
+  }
+
+  const primaryProductUrl = productLinks[0];
+
   console.log('Starting Figma to Klaviyo automation...');
+  console.log(`Campaign: ${campaignName}`);
+  console.log(`Subject: ${subjectLine}`);
   console.log(`Figma URL: ${figmaUrl}`);
   console.log(`Primary product URL: ${primaryProductUrl}`);
   console.log(`Product links to verify: ${productLinks.length}`);
-  console.log(`Campaign name: ${campaignName}`);
-  console.log(`Subject line: ${subjectLine}`);
   console.log(`Use cached Figma export: ${useCache ? 'YES' : 'NO'}`);
+  console.log(`Store Key: ${storeKey || 'none'}`);
 
-  const cachePath = 'output/figma-export.json';
+  fs.mkdirSync('output', { recursive: true });
 
-  if (useCache && !forceFigma) {
-    console.log('\n========================================');
-    console.log('Step 1: Use cached Figma export');
-    console.log('========================================');
+  if (useCache) {
+    console.log('\nStep: Using cached Figma export');
+    console.log('Skipping Figma API export because --use-cache was provided.');
 
-    if (!fs.existsSync(cachePath)) {
+    const cachedFigmaExportPath = 'output/figma-export.json';
+
+    if (!fs.existsSync(cachedFigmaExportPath)) {
       throw new Error(
-        'No cached Figma export found. Run the automation once without --use-cache first.'
+        'Cannot use --use-cache because output/figma-export.json does not exist.'
       );
     }
-
-    const cachedExport = readJson(cachePath);
-    validateCachedExport(cachedExport);
-
-    console.log(`Using cached export: ${cachedExport.exportedNodeName}`);
-    console.log(`Cached image: ${cachedExport.exportedImagePath}`);
   } else {
-    runStep('Step 1: Export Figma email frame', 'node', [
+    console.log('\nStep: Export design from Figma');
+
+    runCommand('node', [
       'skills/01-figma-export.js',
       figmaUrl,
     ]);
   }
 
-  const figmaExport = readJson(cachePath);
-  validateCachedExport(figmaExport);
+  const exportedImagePath = getExportedImagePath();
 
-  const exportedImagePath = figmaExport.exportedImagePath;
-  const processedImagePath = getProcessedImagePath(exportedImagePath);
+  console.log('\nStep: Process image and create email-safe slices');
 
-  const publicImageUrl = getPublicImageUrl({
-    campaignName,
-    processedImagePath,
-  });
-
-  console.log('\nResolved Figma export:');
-  console.log(`Exported node: ${figmaExport.exportedNodeName}`);
-  console.log(`Exported image: ${exportedImagePath}`);
-  console.log(`Processed image target: ${processedImagePath}`);
-  console.log(`Public image URL target: ${publicImageUrl || 'Not configured'}`);
-
-  runStep('Step 2: Process email-safe image', 'node', [
+  runCommand('node', [
     'skills/02-process-images.js',
     exportedImagePath,
   ]);
 
-  const buildHtmlArgs = [
+  const processedImagePath = getProcessedImagePath(exportedImagePath);
+
+  if (!fs.existsSync(processedImagePath)) {
+    throw new Error(`Processed image was not created: ${processedImagePath}`);
+  }
+
+  const publicImageUrl = getExpectedPublicImageUrl({
+    campaignName,
+    processedImagePath,
+  });
+
+  if (publicImageUrl) {
+    console.log(`Public image URL target: ${publicImageUrl}`);
+  } else {
+    console.log('No GitHub repo configured. HTML will use local image paths.');
+  }
+
+  console.log('\nStep: Build email HTML');
+
+  const htmlArgs = [
     'skills/03-build-html.js',
     processedImagePath,
     primaryProductUrl,
   ];
 
   if (publicImageUrl) {
-    buildHtmlArgs.push(publicImageUrl);
+    htmlArgs.push(publicImageUrl);
   }
 
-  runStep('Step 3: Build email HTML and preview', 'node', buildHtmlArgs);
+  runCommand('node', htmlArgs);
 
-  runStep('Step 4: Verify all product links', 'node', [
+  console.log('\nStep: Verify public product links');
+
+  runCommand('node', [
     'skills/04-verify-links.js',
     ...productLinks,
   ]);
 
-  runStep('Step 5: Upload preview and assets to GitHub Pages', 'node', [
+  verifyShopifyProducts({
+    storeKey,
+    productLinksText,
+  });
+
+  console.log('\nStep: Upload preview and assets to GitHub Pages');
+
+  runCommand('node', [
     'skills/06-upload-to-github-pages.js',
     campaignName,
   ]);
 
-  runStep('Step 6: Generate Klaviyo-ready payload', 'node', [
+  console.log('\nStep: Generate Klaviyo-ready payload');
+
+  runCommand('node', [
     'skills/05-generate-klaviyo-payload.js',
     campaignName,
     subjectLine,
@@ -211,24 +287,18 @@ function main() {
   const hostingReport = readJson('output/hosting-report.json');
 
   console.log('\nAutomation complete.');
-  console.log('Generated files:');
-  console.log('- output/email.html');
-  console.log('- output/preview.html');
-  console.log('- output/link-report.json');
-  console.log('- output/klaviyo-campaign-payload.json');
-  console.log('- output/figma-export.json');
-  console.log('- output/hosting-report.json');
-
-  console.log('\nHosted URLs:');
   console.log(`Preview URL: ${hostingReport.previewUrl}`);
   console.log(`Email HTML URL: ${hostingReport.emailHtmlUrl}`);
   console.log(`CDN Image Folder URL: ${hostingReport.cdnImageFolderUrl}`);
+  console.log(`Klaviyo payload: ${normalizePath(config.output.klaviyoPayload)}`);
+
+  if (storeKey) {
+    console.log('Shopify verification report: output/shopify-product-report.json');
+  }
 }
 
-try {
-  main();
-} catch (error) {
-  console.error('\nAutomation failed.');
+run().catch((error) => {
+  console.error('Automation failed.');
   console.error(error.message);
   process.exit(1);
-}
+});

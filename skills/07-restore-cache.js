@@ -27,6 +27,24 @@ function normalizePath(filePath) {
   return filePath.replace(/\\/g, '/');
 }
 
+async function downloadUrlAsBuffer({ url, token }) {
+  const response = await axios.get(url, {
+    timeout: 30000,
+    responseType: 'arraybuffer',
+    validateStatus: () => true,
+    headers: {
+      Authorization: token ? `Bearer ${token}` : undefined,
+      Accept: 'application/octet-stream',
+    },
+  });
+
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(`Failed to download raw file. Status: ${response.status}`);
+  }
+
+  return Buffer.from(response.data);
+}
+
 async function downloadRepoFileAsBuffer({ repo, branch, token, repoPath }) {
   const url = `https://api.github.com/repos/${repo}/contents/${encodeRepoPath(
     repoPath
@@ -54,11 +72,20 @@ async function downloadRepoFileAsBuffer({ repo, branch, token, repoPath }) {
     throw new Error(`Failed to download ${repoPath}. Status: ${response.status}`);
   }
 
-  if (!response.data.content) {
-    throw new Error(`GitHub file response has no content: ${repoPath}`);
+  if (response.data.content) {
+    return Buffer.from(response.data.content, 'base64');
   }
 
-  return Buffer.from(response.data.content, 'base64');
+  if (response.data.download_url) {
+    return downloadUrlAsBuffer({
+      url: response.data.download_url,
+      token,
+    });
+  }
+
+  throw new Error(
+    `GitHub file response has no content or download_url: ${repoPath}`
+  );
 }
 
 async function downloadRepoJson({ repo, branch, token, repoPath }) {
