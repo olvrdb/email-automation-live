@@ -15,7 +15,7 @@ on:
       run_mode:
         description: "demo = max 3 campaigns, production = all matching campaigns"
         required: true
-        default: "demo"
+        default: "production"
         type: choice
         options:
           - demo
@@ -76,23 +76,24 @@ jobs:
 
           CAMPAIGN_NAME_INPUT: ${{ github.event.inputs.campaign_name || '' }}
           FORCE_INPUT: ${{ github.event.inputs.force || 'false' }}
-          RUN_MODE_INPUT: ${{ github.event.inputs.run_mode || 'demo' }}
+          RUN_MODE_INPUT: ${{ github.event.inputs.run_mode || 'production' }}
           ISSUE_TITLE: ${{ github.event.issue.title || '' }}
           EVENT_NAME: ${{ github.event_name }}
+
         run: |
           RUN_MODE="$RUN_MODE_INPUT"
           CAMPAIGN_NAME="$CAMPAIGN_NAME_INPUT"
           FORCE_CAMPAIGN="$FORCE_INPUT"
 
           if [ "$EVENT_NAME" = "issues" ]; then
-            PREFIX="EMAIL_AUTOMATION_RUN::"
-            CAMPAIGN_NAME="${ISSUE_TITLE#"$PREFIX"}"
-            FORCE_CAMPAIGN="true"
-            RUN_MODE="demo"
+            CAMPAIGN_NAME=""
+            FORCE_CAMPAIGN="false"
+            RUN_MODE="production"
 
             echo "Issue trigger detected."
             echo "Issue title: $ISSUE_TITLE"
-            echo "Campaign from issue title: $CAMPAIGN_NAME"
+            echo "Full Airtable queue trigger detected."
+            echo "Running all matching campaigns from Airtable."
           fi
 
           echo "Run mode: $RUN_MODE"
@@ -123,7 +124,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh issue comment "${{ github.event.issue.number }}" --body "Email automation completed successfully for this Airtable-triggered campaign."
+          gh issue comment "${{ github.event.issue.number }}" --body "Email automation queue completed successfully."
           gh issue close "${{ github.event.issue.number }}" --reason completed
 
       - name: Comment on trigger issue failure
