@@ -12,10 +12,18 @@ on:
         required: false
         default: false
         type: boolean
+      run_mode:
+        description: "demo = max 3 campaigns, production = all matching campaigns"
+        required: true
+        default: "demo"
+        type: choice
+        options:
+          - demo
+          - production
 
   schedule:
-    # Runs every 30 minutes in UTC.
-    # Scheduled runs process normal Approved + Scheduled campaigns.
+    # Demo-safe scheduled run.
+    # Later, change RUN_MODE behavior to production when using a proper production Figma setup.
     - cron: "*/30 * * * *"
 
 permissions:
@@ -61,16 +69,27 @@ jobs:
 
           CAMPAIGN_NAME: ${{ github.event.inputs.campaign_name }}
           FORCE_CAMPAIGN: ${{ github.event.inputs.force }}
+          RUN_MODE: ${{ github.event.inputs.run_mode || 'demo' }}
         run: |
+          echo "Run mode: $RUN_MODE"
+
+          MAX_ARGS=""
+          if [ "$RUN_MODE" = "demo" ]; then
+            MAX_ARGS="--max 3"
+            echo "Demo mode enabled: processing max 3 campaigns."
+          else
+            echo "Production mode enabled: processing all matching campaigns."
+          fi
+
           if [ -n "$CAMPAIGN_NAME" ]; then
             echo "Running one Airtable campaign: $CAMPAIGN_NAME"
 
             if [ "$FORCE_CAMPAIGN" = "true" ]; then
-              node run-airtable.js --campaign "$CAMPAIGN_NAME" --force
+              node run-airtable.js --campaign "$CAMPAIGN_NAME" --force $MAX_ARGS
             else
-              node run-airtable.js --campaign "$CAMPAIGN_NAME"
+              node run-airtable.js --campaign "$CAMPAIGN_NAME" $MAX_ARGS
             fi
           else
-            echo "Running all Approved + Scheduled Airtable campaigns"
-            node run-airtable.js
+            echo "Running Airtable queue"
+            node run-airtable.js $MAX_ARGS
           fi
