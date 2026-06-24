@@ -38,7 +38,7 @@ concurrency:
 
 jobs:
   run-automation:
-    if: github.event_name != 'issues' || startsWith(github.event.issue.title, 'EMAIL_AUTOMATION_RUN::')
+    if: github.event_name != 'issues' || github.event.issue.title == 'EMAIL_AUTOMATION_RUN'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -78,12 +78,13 @@ jobs:
           FORCE_INPUT: ${{ github.event.inputs.force || 'false' }}
           RUN_MODE_INPUT: ${{ github.event.inputs.run_mode || 'demo' }}
           ISSUE_TITLE: ${{ github.event.issue.title || '' }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           RUN_MODE="$RUN_MODE_INPUT"
           CAMPAIGN_NAME="$CAMPAIGN_NAME_INPUT"
           FORCE_CAMPAIGN="$FORCE_INPUT"
 
-          if [ "${{ github.event_name }}" = "issues" ]; then
+          if [ "$EVENT_NAME" = "issues" ]; then
             PREFIX="EMAIL_AUTOMATION_RUN::"
             CAMPAIGN_NAME="${ISSUE_TITLE#"$PREFIX"}"
             FORCE_CAMPAIGN="true"
