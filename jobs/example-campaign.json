@@ -1,0 +1,20 @@
+{
+  "campaignName": "Mock Email Demo",
+  "figmaUrl": "PASTE_YOUR_FULL_FIGMA_URL_HERE",
+  "mode": "mock",
+  "target": {
+    "platform": "klaviyo",
+    "type": "campaign"
+  },
+  "slices": [
+    {
+      "layerName": "hero-image",
+      "fileName": "hero-image.png",
+      "format": "png",
+      "scale": 1
+    }
+  ],
+  "links": [
+    "https://httpbin.org/status/200"
+  ]
+}

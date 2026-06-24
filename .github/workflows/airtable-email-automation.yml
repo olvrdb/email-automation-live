@@ -1,0 +1,48 @@
+name: Airtable Email Automation
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/15 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: airtable-email-automation
+  cancel-in-progress: false
+
+jobs:
+  run-automation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Airtable email automation
+        env:
+          FIGMA_TOKEN: ${{ secrets.FIGMA_TOKEN }}
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
+          AIRTABLE_TABLE_NAME: ${{ secrets.AIRTABLE_TABLE_NAME }}
+
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPO: olvrdb/email-automation-live
+          GITHUB_BRANCH: main
+
+          KLAVIYO_KEY: MOCK
+          SHOPIFY_URL: https://example.com
+
+          EMAIL_WIDTH: 600
+          EMAIL_SLICE_HEIGHT: 900
+        run: node run-airtable.js
