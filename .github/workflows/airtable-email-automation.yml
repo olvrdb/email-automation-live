@@ -70,6 +70,8 @@ jobs:
           CAMPAIGN_NAME: ${{ github.event.inputs.campaign_name }}
           FORCE_CAMPAIGN: ${{ github.event.inputs.force }}
           RUN_MODE: ${{ github.event.inputs.run_mode || 'demo' }}
+          SHOPIFY_STORES_JSON: ${{ secrets.SHOPIFY_STORES_JSON }}
+          SHOPIFY_API_VERSION: ${{ secrets.SHOPIFY_API_VERSION }}
         run: |
           echo "Run mode: $RUN_MODE"
 
