@@ -119,6 +119,53 @@ jobs:
             node run-airtable.js $MAX_ARGS
           fi
 
+          
+      - name: Unlock Airtable queue
+        if: always()
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
+          AIRTABLE_CONTROL_TABLE: ${{ secrets.AIRTABLE_CONTROL_TABLE }}
+          AIRTABLE_CONTROL_RECORD_ID: ${{ secrets.AIRTABLE_CONTROL_RECORD_ID }}
+        run: |
+          node - <<'NODE'
+          const token = process.env.AIRTABLE_TOKEN;
+          const baseId = process.env.AIRTABLE_BASE_ID;
+          const tableName = process.env.AIRTABLE_CONTROL_TABLE || 'Automation Control';
+          const recordId = process.env.AIRTABLE_CONTROL_RECORD_ID;
+
+          if (!token || !baseId || !recordId) {
+            console.log('Skipping Airtable queue unlock because required control settings are missing.');
+            process.exit(0);
+          }
+
+          const url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${recordId}`;
+
+          const response = await fetch(url, {
+            method: 'PATCH',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              fields: {
+                'Run Lock': false,
+                Notes: 'GitHub queue run finished. Ready for next trigger.',
+              },
+            }),
+          });
+
+          if (!response.ok) {
+            const text = await response.text();
+            console.error(`Failed to unlock Airtable queue: ${response.status}`);
+            console.error(text);
+            process.exit(1);
+          }
+
+          console.log('Airtable queue unlocked successfully.');
+          NODE
+
+          
       - name: Comment and close trigger issue on success
         if: github.event_name == 'issues' && success()
         env:
